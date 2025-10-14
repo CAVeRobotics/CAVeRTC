@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<body>
+<video id="video" autoplay playsinline style="width:640px; height:480px; background:#000;"></video>
+<script>
+    const pc = new RTCPeerConnection();
+    const video = document.getElementById("video");
+    video.autoplay = true;
+    video.playsInline = true;
+    
+    let pendingCandidates = [];
+    
+    pc.ontrack = (event) => {
+      video.srcObject = event.streams[0];
+    };
+    
+    // Connect to signaling
+    const ws = new WebSocket("ws://localhost:8080");
+    
+    ws.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+    
+      if (data.type === "offer") {
+        await pc.setRemoteDescription(data);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({
+          type: "answer",
+          sdp: pc.localDescription.sdp
+        }));
+        // Add any buffered candidates
+        for (const c of pendingCandidates) await pc.addIceCandidate(c);
+        pendingCandidates = [];
+      } else if (data.type === "candidate") {
+        const candidate = new RTCIceCandidate(data.candidate);
+        if (pc.remoteDescription) {
+          await pc.addIceCandidate(candidate);
+        } else {
+          pendingCandidates.push(candidate);
+        }
+      }
+    };
+    
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        ws.send(JSON.stringify({
+          type: "candidate",
+          candidate: event.candidate
+        }));
+      }
+    };
+    </script>
+    
+</body>
+</html>

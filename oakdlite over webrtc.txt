@@ -1,0 +1,8 @@
+node server.js
+python -m http.server 8000
+
+depthai camera_output.py - use the venv
+obs virtual cam
+pyvirtualcam to reroute to obs virtual cam
+camera settings on chrome to change camera source
+same pipeline, make sure python script is running, but that's it

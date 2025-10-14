@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>WebRTC Receiver</title></head>
+<body>
+  <h2>Receiver</h2>
+    <video id="remoteVideo" autoplay playsinline muted></video>
+
+  <script>
+    const room = new URLSearchParams(location.search).get("room") || "demo";
+    const ws = new WebSocket("ws://localhost:8080");
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
+
+    // Optional but helps some stacks be explicit
+    pc.addTransceiver("video", { direction: "recvonly" });
+
+    let remoteDescSet = false;
+    const candidateQueue = [];
+
+    const videoEl = document.getElementById("remoteVideo");
+
+    pc.ontrack = async (ev) => {
+      if (!videoEl.srcObject) {
+        videoEl.srcObject = ev.streams[0];
+        try { await videoEl.play(); } catch (e) { console.warn("Autoplay blocked:", e); }
+      }
+    };
+
+    pc.onconnectionstatechange = () => console.log("connectionState:", pc.connectionState);
+    pc.oniceconnectionstatechange = () => console.log("iceConnectionState:", pc.iceConnectionState);
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate, room }));
+    };
+
+    ws.addEventListener("open", () => {
+      ws.send(JSON.stringify({ type: "join", room, role: "receiver" }));
+      // Prompt the sender to (re)negotiate
+      ws.send(JSON.stringify({ type: "ready", room }));
+    });
+
+    ws.onmessage = async (ev) => {
+      const msg = JSON.parse(ev.data);
+
+      if (msg.type === "offer") {
+        console.log("Got offer");
+        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+        remoteDescSet = true;
+
+        // Drain queued candidates
+        while (candidateQueue.length) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidateQueue.shift()));
+        }
+
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({ type: "answer", sdp: answer, room }));
+      } else if (msg.type === "candidate") {
+        if (remoteDescSet) {
+          await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+        } else {
+          candidateQueue.push(msg.candidate);
+        }
+      }
+    };
+  </script>
+</body>
+</html>
