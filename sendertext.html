@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"><title>WebRTC Sender</title></head>
+<head><meta charset="utf-8"><title>WebRTC Text Sender</title></head>
 <body>
   <h2>Sender</h2>
-  <video hidden id="localVideo" autoplay playsinline muted style="width:480px;height:auto;border:1px solid #ccc;"></video>
 
   <script>
     const room = new URLSearchParams(location.search).get("room") || "demo";
@@ -13,6 +12,8 @@
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
     });
+
+    var dc;
 
     // Logging for sanity
     pc.onconnectionstatechange = () => console.log("connectionState:", pc.connectionState);
@@ -32,10 +33,10 @@
 
       if (msg.type === "ready" || msg.type === "peer-joined") {
         // Create & send a fresh offer whenever the receiver signals readiness or joins
-        await ensureLocalStreamAndOffer();
+        await ensureLocalStreamAndOffer(dc);
       } else if (msg.type === "answer") {
         console.log("Got answer");
-        await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+        await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
         remoteDescSet = true;
         while (candidateQueue.length) {
           await pc.addIceCandidate(new RTCIceCandidate(candidateQueue.shift()));
@@ -63,12 +64,24 @@
     let gotStream = false;
     async function ensureLocalStreamAndOffer() {
       if (!gotStream) {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        document.getElementById("localVideo").srcObject = stream;
-        stream.getTracks().forEach(t => pc.addTrack(t, stream));
         gotStream = true;
       }
-      const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+      dc = pc.createDataChannel("senderChannel");
+
+      dc.onopen = (event) => {
+          console.log('Data channel opened:', event);
+          dc.send('Hello from the offerer!');
+      };
+
+      dc.onmessage = (event) => {
+          console.log('Received message:', event.data);
+      };
+
+      dc.onclose = (event) => {
+          console.log('Data channel closed:', event);
+      };
+
+      const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       ws.send(JSON.stringify({ type: "offer", sdp: offer, room }));
       console.log(JSON.stringify({ type: "offer", sdp: offer, room }));

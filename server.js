@@ -1,5 +1,5 @@
 const WebSocket = require("ws");
-const wss = new WebSocket.Server({ port: 8080 });
+const wss = new WebSocket.Server({ host: '10.0.0.113', port: 8080 });
 
 /** Track room membership */
 const meta = new Map(); // ws -> { room, role }
