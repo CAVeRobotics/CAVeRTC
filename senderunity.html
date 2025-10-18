@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>WebRTC Unity Sender</title></head>
+<body>
+  <h2>Sender</h2>
+  <video hidden id="localVideo" autoplay playsinline muted style="width:480px;height:auto;border:1px solid #ccc;"></video>
+
+  <script>
+    const room = new URLSearchParams(location.search).get("room") || "demo";
+    const ws = new WebSocket("ws://10.0.0.113:8080");
+
+    // Prefer adding STUN to help ICE
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    });
+
+    // Logging for sanity
+    pc.onconnectionstatechange = () => console.log("connectionState:", pc.connectionState);
+    pc.oniceconnectionstatechange = () => console.log("iceConnectionState:", pc.iceConnectionState);
+
+    let remoteDescSet = false;
+    const candidateQueue = [];
+
+    ws.addEventListener("open", () => {
+      ws.send(JSON.stringify({ type: "join", room, role: "sender" }));
+      console.log(JSON.stringify({ type: "join", room, role: "sender" }));
+    });
+
+    ws.onmessage = async (ev) => {
+      console.log(ev.data);
+      const msg = JSON.parse(ev.data);
+
+      if (msg.type === "ready" || msg.type === "peer-joined") {
+        // Create & send a fresh offer whenever the receiver signals readiness or joins
+        await ensureLocalStreamAndOffer();
+      } else if (msg.type === "answer") {
+        console.log("Got answer");
+        await pc.setRemoteDescription(new RTCSessionDescription(msg.answer));
+        remoteDescSet = true;
+        while (candidateQueue.length) {
+          await pc.addIceCandidate(new RTCIceCandidate(candidateQueue.shift()));
+        }
+      } else if (msg.type === "candidate") {
+        if (remoteDescSet) {
+          await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+        } else {
+          candidateQueue.push(msg.candidate);
+        }
+      } else if (msg.type === "peer-left") {
+        console.log("Receiver left");
+      }
+    };
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate)
+      {
+        ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate, room }));
+        console.log(JSON.stringify({ type: "candidate", candidate: e.candidate, room }));
+      } 
+        
+    };
+
+    let gotStream = false;
+    async function ensureLocalStreamAndOffer() {
+      if (!gotStream) {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        document.getElementById("localVideo").srcObject = stream;
+        stream.getTracks().forEach(t => pc.addTrack(t, stream));
+        gotStream = true;
+      }
+      const offer = await pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false });
+      await pc.setLocalDescription(offer);
+      ws.send(JSON.stringify({ type: "offer", sdp: offer, room }));
+      console.log(JSON.stringify({ type: "offer", sdp: offer, room }));
+    }
+  </script>
+</body>
+</html>
