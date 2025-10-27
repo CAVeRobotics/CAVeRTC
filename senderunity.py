@@ -109,7 +109,7 @@ async def setup_webrtc_and_run(ip_address, port):
 
 
 async def main():
-    ip_address = "10.0.0.113" # Ip Address of Remote Server/Machine
+    ip_address = "0.0.0.0" # Ip Address of Remote Server/Machine
     port = 8080
     await setup_webrtc_and_run(ip_address, port)
 
