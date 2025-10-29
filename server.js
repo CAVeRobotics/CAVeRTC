@@ -1,5 +1,5 @@
 const WebSocket = require("ws");
-const wss = new WebSocket.Server({ host: '10.0.0.113', port: 8080 });
+const wss = new WebSocket.Server({ host: '0.0.0.0', port: 8080 });
 
 /** Track room membership */
 const meta = new Map(); // ws -> { room, role }
@@ -52,4 +52,4 @@ wss.on("connection", (ws) => {
   });
 });
 
-console.log("✅ Signaling server on ws://localhost:8080");
+console.log("✅ Signaling server on ws://0.0.0.0:8080");
