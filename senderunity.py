@@ -7,6 +7,7 @@ import fractions
 from datetime import datetime
 import depthai as dai
 import json
+import time
 
 remoteDescSet = False
 candidateQueue = []
@@ -17,6 +18,14 @@ class CustomVideoStreamTrack(VideoStreamTrack):
     def __init__(self):
         super().__init__()
         self.frame_count = 0
+        try:
+            self.depthaiinit()
+        except RuntimeError as e:
+            time.sleep(5)
+            self.depthaiinit()
+            
+            
+    def depthaiinit(self):
         self.pipeline = dai.Pipeline()
         self.cam = self.pipeline.create(dai.node.Camera).build()
         self.videoQueue = self.cam.requestOutput(size=(1280,720), fps=30).createOutputQueue(maxSize=1, blocking=False)
@@ -43,9 +52,8 @@ class CustomVideoStreamTrack(VideoStreamTrack):
             return video_frame
         
 
-async def setup_webrtc_and_run(ip_address, port):
+async def setup_webrtc_and_run(ip_address, port, video_sender):
     pc = RTCPeerConnection(RTCConfiguration(iceServers=ice_servers))
-    video_sender = CustomVideoStreamTrack()
     pc.addTrack(video_sender)
 
 
@@ -99,19 +107,25 @@ async def setup_webrtc_and_run(ip_address, port):
                              sdpMLineIndex=int(msg["candidate"]["sdpMLineIndex"])))
                     else:
                         candidateQueue.append(msg["candidate"])
+                elif msg["type"] == "peer-left":
+                    break
                 else:
                     print(f"Received unsupported type: {msg['type']}")
         except Exception as e:
             print(f"Error: {e}")
         finally:
             await pc.close()
+            return "end of current run"
 
 
 
 async def main():
     ip_address = "0.0.0.0" # Ip Address of Remote Server/Machine
     port = 8080
-    await setup_webrtc_and_run(ip_address, port)
+    video_sender = CustomVideoStreamTrack()
+    while True:
+        current_run = await setup_webrtc_and_run(ip_address, port, video_sender)
+        print(current_run)
 
 if __name__ == "__main__":
     asyncio.run(main())
